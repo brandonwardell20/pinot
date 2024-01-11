@@ -80,6 +80,10 @@ public class PinotDriver implements Driver {
   @Override
   public Connection connect(String url, Properties info)
       throws SQLException {
+
+      PinotClientTransport pinotClientTransport = null;
+      PinotControllerTransport pinotControllerTransport = null;
+
     try {
         if (!this.acceptsURL(url)) {
             return null;
@@ -115,19 +119,41 @@ public class PinotDriver implements Driver {
         pinotControllerTransportFactory.setHeaders(headers);
       }
 
-      PinotClientTransport pinotClientTransport = factory.withConnectionProperties(info).buildTransport();
-      PinotControllerTransport pinotControllerTransport = pinotControllerTransportFactory
+        pinotClientTransport = factory.withConnectionProperties(info).buildTransport();
+        pinotControllerTransport = pinotControllerTransportFactory
               .withConnectionProperties(info)
               .buildTransport();
       String controllerUrl = DriverUtils.getControllerFromURL(url);
       String tenant = info.getProperty(INFO_TENANT, DEFAULT_TENANT);
       return new PinotConnection(info, controllerUrl, pinotClientTransport, tenant, pinotControllerTransport);
     } catch (Exception e) {
-      throw new SQLException(String.format("Failed to connect to url : %s", url), e);
+        closeResourcesSafely(pinotClientTransport, pinotControllerTransport);
+        throw new SQLException(String.format("Failed to connect to url : %s", url), e);
     }
   }
 
-  private Map<String, String> getHeadersFromProperties(Properties info) {
+    /**
+     * If something goes wrong generating the connection, the transports need to be safely closed to prevent leaks.
+     * @param pinotClientTransport connection client transport
+     * @param pinotControllerTransport connection controller transport
+     */
+    private static void closeResourcesSafely(PinotClientTransport pinotClientTransport, PinotControllerTransport pinotControllerTransport) {
+        try {
+            if (pinotClientTransport != null) {
+                pinotClientTransport.close();
+            }
+        } catch (PinotClientException ignored) {
+        }
+
+        try {
+            if (pinotControllerTransport != null) {
+                pinotControllerTransport.close();
+            }
+        } catch (PinotClientException ignored) {
+        }
+    }
+
+    private Map<String, String> getHeadersFromProperties(Properties info) {
     return info.entrySet().stream().filter(entry -> entry.getKey().toString().startsWith(INFO_HEADERS + ".")).map(
             entry -> Pair.of(entry.getKey().toString().substring(INFO_HEADERS.length() + 1),
                 entry.getValue().toString()))
