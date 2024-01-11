@@ -81,6 +81,9 @@ public class PinotDriver implements Driver {
   public Connection connect(String url, Properties info)
       throws SQLException {
     try {
+        if (!this.acceptsURL(url)) {
+            return null;
+        }
       LOGGER.info("Initiating connection to database for url: " + url);
 
       Map<String, String> urlParams = DriverUtils.getURLParams(url);
